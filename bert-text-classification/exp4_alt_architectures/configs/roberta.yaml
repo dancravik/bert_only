@@ -1,0 +1,44 @@
+# Liu et al., 2019, "RoBERTa: A Robustly Optimized BERT Pretraining Approach"
+# https://arxiv.org/abs/1907.11692 — one of the most cited BERT follow-ups
+# (~20k+ citations). Same architecture as BERT-base, but: drops the
+# next-sentence-prediction objective, trains on ~10x more data with much
+# larger batches, uses dynamic (not static) masking, and switches to a
+# byte-level BPE tokenizer. Net effect: better pretraining, not a new
+# architecture — a useful contrast with ALBERT/ELECTRA below.
+comet:
+  api_key: "sqAgtJu3JqBTsHLGMTekvp9GH"          # вставь свой ключ с comet.com/account-settings
+  workspace: "danchenko-rtm"       # имя воркспейса в comet
+  project_name: "bert-text-classification"
+  tags: ["exp4", "alt_architecture", "roberta-base"]
+
+data:
+  train_path: "/kaggle/input/datasets/datatattle/covid-19-nlp-text-classification/Corona_NLP_train.csv"
+  test_path: "/kaggle/input/datasets/datatattle/covid-19-nlp-text-classification/Corona_NLP_test.csv"
+  val_size: 0.1
+  max_length: 128
+
+model:
+  name: "roberta-base"
+  num_labels: 5
+  freeze_backbone: false   # match whichever regime won in exp1 vs exp2
+
+train:
+  seed: 42
+  weight_decay: 0.01
+  warmup_ratio: 0.06
+  num_workers: 2
+
+search:
+  search_epochs: 2
+  learning_rates: [5.0e-5, 3.0e-5, 2.0e-5, 1.0e-5]
+  batch_sizes: [16, 32]
+
+final:
+  learning_rate: 2.0e-5
+  batch_size: 16
+  epochs: 4
+
+error_analysis:
+  top_k: 25
+
+output_dir: "./outputs/exp4_alt_architectures/roberta"

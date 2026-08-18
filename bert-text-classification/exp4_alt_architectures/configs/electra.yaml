@@ -1,0 +1,46 @@
+# Clark et al., 2020, "ELECTRA: Pre-training Text Encoders as Discriminators
+# Rather Than Generators" — https://arxiv.org/abs/2003.10555 (~5k+
+# citations, ICLR 2020). Replaces masked-language-modeling with "replaced
+# token detection": a small generator network corrupts ~15% of tokens, and
+# the main model (a discriminator) is trained to label EVERY token as
+# original/replaced. Because every position gives a training signal (not
+# just the masked 15%), ELECTRA is far more sample/compute-efficient to
+# pretrain than BERT/RoBERTa for a given compute budget. We fine-tune the
+# discriminator only, exactly like a normal BERT encoder.
+comet:
+  api_key: "sqAgtJu3JqBTsHLGMTekvp9GH"          # вставь свой ключ с comet.com/account-settings
+  workspace: "danchenko-rtm"       # имя воркспейса в comet
+  project_name: "bert-text-classification"
+  tags: ["exp4", "alt_architecture", "electra-base-discriminator"]
+
+data:
+  train_path: "/kaggle/input/datasets/datatattle/covid-19-nlp-text-classification/Corona_NLP_train.csv"
+  test_path: "/kaggle/input/datasets/datatattle/covid-19-nlp-text-classification/Corona_NLP_test.csv"
+  val_size: 0.1
+  max_length: 128
+
+model:
+  name: "google/electra-base-discriminator"
+  num_labels: 5
+  freeze_backbone: false
+
+train:
+  seed: 42
+  weight_decay: 0.01
+  warmup_ratio: 0.06
+  num_workers: 2
+
+search:
+  search_epochs: 2
+  learning_rates: [5.0e-5, 3.0e-5, 2.0e-5, 1.0e-5]
+  batch_sizes: [16, 32]
+
+final:
+  learning_rate: 3.0e-5
+  batch_size: 16
+  epochs: 4
+
+error_analysis:
+  top_k: 25
+
+output_dir: "./outputs/exp4_alt_architectures/electra"

@@ -1,0 +1,48 @@
+# EXP 3 — "fine-tune differently": parameter-efficient fine-tuning with LoRA
+# (Hu et al., 2021, https://arxiv.org/abs/2106.09685). Freezes the backbone
+# and injects small trainable low-rank adapters into the attention
+# projections instead of training the whole model or only a linear head —
+# a middle ground between exp1 (linear probe) and exp2 (full fine-tune).
+comet:
+  api_key: "sqAgtJu3JqBTsHLGMTekvp9GH"          # вставь свой ключ с comet.com/account-settings
+  workspace: "danchenko-rtm"       # имя воркспейса в comet
+  project_name: "bert-text-classification"
+  tags: ["exp3", "lora", "bert-base-uncased"]
+
+data:
+  train_path: "/kaggle/input/datasets/datatattle/covid-19-nlp-text-classification/Corona_NLP_train.csv"
+  test_path: "/kaggle/input/datasets/datatattle/covid-19-nlp-text-classification/Corona_NLP_test.csv"
+  val_size: 0.1
+  max_length: 128
+
+model:
+  name: "bert-base-uncased"
+  num_labels: 5
+
+lora:
+  r: 8
+  alpha: 16
+  dropout: 0.1
+  target_modules: ["query", "value"]   # BERT self-attention projections
+
+train:
+  seed: 42
+  weight_decay: 0.01
+  warmup_ratio: 0.06
+  num_workers: 2
+
+# LoRA tolerates larger LRs than full fine-tuning since far fewer params move
+search:
+  search_epochs: 2
+  learning_rates: [5.0e-4, 1.0e-4, 5.0e-5]
+  batch_sizes: [16, 32]
+
+final:
+  learning_rate: 1.0e-4
+  batch_size: 32
+  epochs: 6
+
+error_analysis:
+  top_k: 25
+
+output_dir: "./outputs/exp3_lora"

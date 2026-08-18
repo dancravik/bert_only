@@ -1,0 +1,47 @@
+# Lan et al., 2019, "ALBERT: A Lite BERT for Self-supervised Learning of
+# Language Representations" — https://arxiv.org/abs/1909.11942 (~10k+
+# citations). Two real architectural changes, not just a training recipe:
+# (1) factorized embedding parameterization (splits the large vocab-to-hidden
+# embedding matrix into two small ones), and (2) cross-layer parameter
+# sharing (every transformer layer reuses the same weights) — this is what
+# makes ALBERT-base ~9M params vs BERT-base's 110M. Also replaces NSP with a
+# sentence-order-prediction (SOP) objective. Trade-off: far fewer parameters
+# for similar accuracy, but layer sharing makes it slower per-step than its
+# parameter count suggests (still runs the same number of layers).
+comet:
+  api_key: "sqAgtJu3JqBTsHLGMTekvp9GH"          # вставь свой ключ с comet.com/account-settings
+  workspace: "danchenko-rtm"       # имя воркспейса в comet
+  project_name: "bert-text-classification"
+  tags: ["exp4", "alt_architecture", "albert-base-v2"]
+
+data:
+  train_path: "/kaggle/input/datasets/datatattle/covid-19-nlp-text-classification/Corona_NLP_train.csv"
+  test_path: "/kaggle/input/datasets/datatattle/covid-19-nlp-text-classification/Corona_NLP_test.csv"
+  val_size: 0.1
+  max_length: 128
+
+model:
+  name: "albert-base-v2"
+  num_labels: 5
+  freeze_backbone: false
+
+train:
+  seed: 42
+  weight_decay: 0.01
+  warmup_ratio: 0.06
+  num_workers: 2
+
+search:
+  search_epochs: 2
+  learning_rates: [5.0e-5, 3.0e-5, 2.0e-5, 1.0e-5]
+  batch_sizes: [16, 32]
+
+final:
+  learning_rate: 2.0e-5
+  batch_size: 16
+  epochs: 4
+
+error_analysis:
+  top_k: 25
+
+output_dir: "./outputs/exp4_alt_architectures/albert"

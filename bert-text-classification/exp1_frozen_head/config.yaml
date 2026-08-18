@@ -1,0 +1,46 @@
+# EXP 1 — baseline, frozen backbone: cut off BERT's pretraining head,
+# attach a fresh classification head, train ONLY the head (backbone frozen).
+comet:
+  api_key: "sqAgtJu3JqBTsHLGMTekvp9GH"          # вставь свой ключ с comet.com/account-settings
+  workspace: "danchenko-rtm"       # имя воркспейса в comet
+  project_name: "bert-text-classification"
+  tags: ["exp1", "frozen_head", "bert-base-uncased"]
+
+data:
+  train_path: "/kaggle/input/datasets/datatattle/covid-19-nlp-text-classification/Corona_NLP_train.csv"
+  test_path: "/kaggle/input/datasets/datatattle/covid-19-nlp-text-classification/Corona_NLP_test.csv"
+  val_size: 0.1
+  max_length: 128
+
+model:
+  name: "bert-base-uncased"
+  num_labels: 5
+  freeze_backbone: true
+
+train:
+  seed: 42
+  weight_decay: 0.01
+  warmup_ratio: 0.06
+  num_workers: 2
+
+# --- step 1: run `python train.py --config config.yaml --mode search` ---
+# does a small grid search (short runs), logs every trial to Comet as a
+# separate experiment tagged "search". Inspect the Comet project, pick the
+# best (lr, batch_size) combo, and fill it into `final:` below.
+search:
+  search_epochs: 2
+  learning_rates: [1.0e-3, 5.0e-4, 1.0e-4, 5.0e-5]
+  batch_sizes: [16, 32, 64]
+
+# --- step 2: fill in the winner from the search, then run
+# `python train.py --config config.yaml --mode final` for the full run with
+# metrics + top-loss error analysis logged to Comet ---
+final:
+  learning_rate: 1.0e-4
+  batch_size: 32
+  epochs: 8
+
+error_analysis:
+  top_k: 25
+
+output_dir: "./outputs/exp1_frozen_head"

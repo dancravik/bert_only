@@ -1,0 +1,41 @@
+# EXP 2 — full fine-tune: same fresh classification head as exp1, but
+# nothing is frozen — the whole BERT backbone is updated too.
+comet:
+  api_key: "sqAgtJu3JqBTsHLGMTekvp9GH"          # вставь свой ключ с comet.com/account-settings
+  workspace: "danchenko-rtm"       # имя воркспейса в comet
+  project_name: "bert-text-classification"
+  tags: ["exp2", "full_finetune", "bert-base-uncased"]
+
+data:
+  train_path: "/kaggle/input/datasets/datatattle/covid-19-nlp-text-classification/Corona_NLP_train.csv"
+  test_path: "/kaggle/input/datasets/datatattle/covid-19-nlp-text-classification/Corona_NLP_test.csv"
+  val_size: 0.1
+  max_length: 128
+
+model:
+  name: "bert-base-uncased"
+  num_labels: 5
+  freeze_backbone: false
+
+train:
+  seed: 42
+  weight_decay: 0.01
+  warmup_ratio: 0.06
+  num_workers: 2
+
+# full fine-tuning needs much smaller LRs than a linear probe, and fewer
+# epochs (it converges fast and overfits a 5-class tweet dataset quickly)
+search:
+  search_epochs: 2
+  learning_rates: [5.0e-5, 3.0e-5, 2.0e-5, 1.0e-5]
+  batch_sizes: [16, 32]
+
+final:
+  learning_rate: 2.0e-5
+  batch_size: 16
+  epochs: 4
+
+error_analysis:
+  top_k: 25
+
+output_dir: "./outputs/exp2_full_finetune"

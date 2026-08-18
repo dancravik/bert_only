@@ -1,0 +1,47 @@
+# Sanh et al., 2019, "DistilBERT, a distilled version of BERT: smaller,
+# faster, cheaper and lighter" — https://arxiv.org/abs/1910.01108 (~9k+
+# citations). Trains a 6-layer student to match a full 12-layer BERT teacher
+# via knowledge distillation (a triple loss: distillation loss on the
+# teacher's soft logits + masked-LM loss + a cosine embedding loss aligning
+# hidden states). Removes token-type embeddings and the pooler. Result:
+# ~40% fewer parameters, ~60% faster inference, retaining ~97% of BERT's
+# GLUE performance in the original paper. Good contrast with ALBERT: same
+# "make it smaller" goal, completely different mechanism (distillation vs.
+# parameter sharing).
+comet:
+  api_key: "sqAgtJu3JqBTsHLGMTekvp9GH"          # вставь свой ключ с comet.com/account-settings
+  workspace: "danchenko-rtm"       # имя воркспейса в comet
+  project_name: "bert-text-classification"
+  tags: ["exp4", "alt_architecture", "distilbert-base-uncased"]
+
+data:
+  train_path: "/kaggle/input/datasets/datatattle/covid-19-nlp-text-classification/Corona_NLP_train.csv"
+  test_path: "/kaggle/input/datasets/datatattle/covid-19-nlp-text-classification/Corona_NLP_test.csv"
+  val_size: 0.1
+  max_length: 128
+
+model:
+  name: "distilbert-base-uncased"
+  num_labels: 5
+  freeze_backbone: false
+
+train:
+  seed: 42
+  weight_decay: 0.01
+  warmup_ratio: 0.06
+  num_workers: 2
+
+search:
+  search_epochs: 2
+  learning_rates: [5.0e-5, 3.0e-5, 2.0e-5, 1.0e-5]
+  batch_sizes: [16, 32, 64]   # cheaper model -> can afford larger batches
+
+final:
+  learning_rate: 3.0e-5
+  batch_size: 32
+  epochs: 4
+
+error_analysis:
+  top_k: 25
+
+output_dir: "./outputs/exp4_alt_architectures/distilbert"
