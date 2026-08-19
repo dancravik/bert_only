@@ -37,8 +37,8 @@ search:
   batch_sizes: [16, 32]
 
 final:
-  learning_rate: 2.0e-5
-  batch_size: 16
+  learning_rate: 5.0e-5
+  batch_size: 32
   epochs: 4
 
 error_analysis:
