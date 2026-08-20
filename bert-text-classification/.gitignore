@@ -5,3 +5,4 @@ __pycache__/
 .comet.config
 *.egg-info/
 .env
+.venv/

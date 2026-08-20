@@ -1,21 +1,19 @@
+import comet_ml  # noqa: F401  (before torch: comet auto-logging hook)
 import argparse
 import itertools
 import os
 import sys
 
-import pandas as pd
 import torch
 import yaml
 from torch.utils.data import DataLoader
-from transformers import AutoModelForSequenceClassification, AutoTokenizer, get_linear_schedule_with_warmup
+from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from common.comet_utils import init_experiment
-from common.data import LABELS_5CLASS, load_dataframes, TweetDataset, make_collate_fn
-from common.engine import evaluate, train_epoch
-from common.error_analysis import log_error_analysis
-from common.metrics import compute_all_metrics, confusion_matrix_and_report
-from common.utils import count_trainable_params, freeze_backbone, seed_everything
+from common.data import load_dataframes, TweetDataset, make_collate_fn
+from common.trainer import final_run, log_run_params, run_training
+from common.utils import freeze_backbone, seed_everything
 
 
 def build_model_and_loaders(cfg, batch_size, tokenizer, train_df, val_df, device):
@@ -40,37 +38,15 @@ def build_model_and_loaders(cfg, batch_size, tokenizer, train_df, val_df, device
     return model, train_loader, val_loader
 
 
-def run_training(cfg, model, train_loader, val_loader, lr, epochs, device, experiment):
-    optimizer = torch.optim.AdamW(
-        filter(lambda p: p.requires_grad, model.parameters()),
-        lr=lr, weight_decay=cfg["train"]["weight_decay"],
-    )
-    total_steps = len(train_loader) * epochs
-    scheduler = get_linear_schedule_with_warmup(
-        optimizer,
-        num_warmup_steps=int(total_steps * cfg["train"]["warmup_ratio"]),
-        num_training_steps=total_steps,
-    )
-
-    best_f1 = -1.0
-    best_eval = None
-    for epoch in range(epochs):
-        train_loss = train_epoch(model, train_loader, optimizer, scheduler, device)
-        eval_out = evaluate(model, val_loader, device)
-        m = compute_all_metrics(eval_out["labels"], eval_out["preds"], eval_out["proba"], LABELS_5CLASS)
-
-        experiment.log_metric("train_loss", train_loss, epoch=epoch)
-        experiment.log_metric("val_loss", eval_out["loss"], epoch=epoch)
-        for k, v in m.items():
-            experiment.log_metric(f"val_{k}", v, epoch=epoch)
-        print(f"epoch {epoch}: train_loss={train_loss:.4f} val_loss={eval_out['loss']:.4f} "
-              f"val_f1_macro={m['f1_macro']:.4f} val_acc={m['accuracy']:.4f}")
-
-        if m["f1_macro"] > best_f1:
-            best_f1 = m["f1_macro"]
-            best_eval = eval_out
-
-    return best_f1, best_eval
+def save_and_print_results(results, output_dir):
+    import pandas as pd
+    results_df = pd.DataFrame(results).sort_values("best_val_f1_macro", ascending=False)
+    path = f"{output_dir}/search_results.csv"
+    results_df.to_csv(path, index=False)
+    print("\n=== search results (best first) ===")
+    print(results_df.to_string(index=False))
+    print("\nUpdate `final.learning_rate` / `final.batch_size` in config.yaml with the winner, "
+          f"then rerun with --mode final (results also in {path})")
 
 
 def search(cfg, tokenizer, train_df, val_df, device):
@@ -82,67 +58,18 @@ def search(cfg, tokenizer, train_df, val_df, device):
         experiment = init_experiment(cfg, exp_name)
         experiment.add_tag("search")
         model, train_loader, val_loader = build_model_and_loaders(cfg, bs, tokenizer, train_df, val_df, device)
-        n_trainable, n_total = count_trainable_params(model)
-        experiment.log_parameter("n_trainable_params", n_trainable)
-        experiment.log_parameter("n_total_params", n_total)
+        log_run_params(experiment, cfg, lr, bs, cfg["search"]["search_epochs"], model, mode="search")
 
-        best_f1, _ = run_training(
+        best_f1, best_epoch, _, _ = run_training(
             cfg, model, train_loader, val_loader, lr, cfg["search"]["search_epochs"], device, experiment
         )
-        results.append({"learning_rate": lr, "batch_size": bs, "best_val_f1_macro": best_f1})
+        results.append({"learning_rate": lr, "batch_size": bs,
+                        "best_val_f1_macro": best_f1, "best_epoch": best_epoch})
         experiment.log_metric("best_val_f1_macro", best_f1)
         experiment.end()
 
-    results_df = pd.DataFrame(results).sort_values("best_val_f1_macro", ascending=False)
     os.makedirs(cfg["output_dir"], exist_ok=True)
-    results_df.to_csv(f"{cfg['output_dir']}/search_results.csv", index=False)
-    print("\n=== search results (best first) ===")
-    print(results_df.to_string(index=False))
-    print("\nUpdate `final.learning_rate` / `final.batch_size` in config.yaml with the winner, "
-          "then rerun with --mode final")
-
-
-def final_run(cfg, tokenizer, train_df, val_df, test_df, device):
-    experiment = init_experiment(cfg, "exp2_full_finetune_final")
-    experiment.add_tag("final")
-
-    lr = cfg["final"]["learning_rate"]
-    bs = cfg["final"]["batch_size"]
-    epochs = cfg["final"]["epochs"]
-
-    model, train_loader, val_loader = build_model_and_loaders(cfg, bs, tokenizer, train_df, val_df, device)
-    n_trainable, n_total = count_trainable_params(model)
-    experiment.log_parameter("n_trainable_params", n_trainable)
-    experiment.log_parameter("n_total_params", n_total)
-
-    run_training(cfg, model, train_loader, val_loader, lr, epochs, device, experiment)
-
-    # final evaluation on held-out test set
-    collate = make_collate_fn(tokenizer)
-    test_loader = DataLoader(
-        TweetDataset(test_df, tokenizer, cfg["data"]["max_length"]),
-        batch_size=bs, shuffle=False, collate_fn=collate, num_workers=cfg["train"]["num_workers"],
-    )
-    test_out = evaluate(model, test_loader, device)
-    test_metrics = compute_all_metrics(test_out["labels"], test_out["preds"], test_out["proba"], LABELS_5CLASS)
-    for k, v in test_metrics.items():
-        experiment.log_metric(f"test_{k}", v)
-
-    cm, report = confusion_matrix_and_report(test_out["labels"], test_out["preds"], LABELS_5CLASS)
-    print("\n=== TEST classification report ===")
-    print(report)
-    experiment.log_confusion_matrix(matrix=cm.tolist(), labels=LABELS_5CLASS)
-    experiment.log_text(report, metadata={"type": "classification_report"})
-
-    os.makedirs(cfg["output_dir"], exist_ok=True)
-    log_error_analysis(
-        experiment, test_df, test_out, LABELS_5CLASS,
-        cfg["error_analysis"]["top_k"], cfg["output_dir"], split_name="test",
-    )
-
-    model.save_pretrained(f"{cfg['output_dir']}/model")
-    tokenizer.save_pretrained(f"{cfg['output_dir']}/model")
-    experiment.end()
+    save_and_print_results(results, cfg["output_dir"])
 
 
 def main():
@@ -168,7 +95,13 @@ def main():
     if args.mode == "search":
         search(cfg, tokenizer, train_df, val_df, device)
     else:
-        final_run(cfg, tokenizer, train_df, val_df, test_df, device)
+        experiment = init_experiment(cfg, "exp2_full_finetune_final")
+        experiment.add_tag("final")
+        bs = cfg["final"]["batch_size"]
+        model, train_loader, val_loader = build_model_and_loaders(cfg, bs, tokenizer, train_df, val_df, device)
+        log_run_params(experiment, cfg, cfg["final"]["learning_rate"], bs,
+                       cfg["final"]["epochs"], model, mode="final")
+        final_run(cfg, experiment, model, train_loader, val_loader, tokenizer, test_df, device)
 
 
 if __name__ == "__main__":

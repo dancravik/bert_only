@@ -31,9 +31,11 @@ train:
   warmup_ratio: 0.06
   num_workers: 2
 
-# LoRA tolerates larger LRs than full fine-tuning since far fewer params move
+# LoRA tolerates larger LRs than full fine-tuning since far fewer params move.
+# Adapters start at random/zero and warm up slowly, so 2-epoch trials
+# undertrain them (same pathology as exp1's old search protocol).
 search:
-  search_epochs: 2
+  search_epochs: 3
   learning_rates: [5.0e-4, 1.0e-4, 5.0e-5]
   batch_sizes: [16, 32]
 

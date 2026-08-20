@@ -24,20 +24,19 @@ train:
   num_workers: 2
 
 # --- step 1: run `python train.py --config config.yaml --mode search` ---
-# does a small grid search (short runs), logs every trial to Comet as a
-# separate experiment tagged "search". Inspect the Comet project, pick the
-# best (lr, batch_size) combo, and fill it into `final:` below.
+# Grid search over (lr, bs). NOTE: a linear probe over a frozen backbone
+# starts from RANDOM head weights and needs several epochs to warm up — the
+# previous 2-epoch protocol undertrained every trial (~0.29 F1 best). 4 epochs
+# per trial and an lr grid covering the 1e-3..1e-2 range linear probes need.
 search:
-  search_epochs: 2
-  learning_rates: [1.0e-3, 5.0e-4, 1.0e-4, 5.0e-5]
-  batch_sizes: [16, 32, 64]
+  search_epochs: 4
+  learning_rates: [1.0e-2, 5.0e-3, 1.0e-3, 5.0e-4]
+  batch_sizes: [16, 32]
 
 # --- step 2: fill in the winner from the search, then run
-# `python train.py --config config.yaml --mode final` for the full run with
-
-# metrics + top-loss error analysis logged to Comet ---
+# `python train.py --config config.yaml --mode final` for the full run ---
 final:
-  learning_rate: 1.0e-3
+  learning_rate: 1.0e-3          # provisional placeholder — fill the search winner
   batch_size: 32
   epochs: 15
 

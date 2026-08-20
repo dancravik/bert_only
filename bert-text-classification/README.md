@@ -15,12 +15,16 @@ analysis) вынесен в `common/`, чтобы не дублировать е
 
 ```
 common/                      # общие утилиты, импортируются во всех exp*
-├── data.py                  # чтение csv, TweetDataset, collate с динамическим паддингом
+├── data.py                  # чтение csv, TweetDataset, collate с динамическим паддингом;
+│                             #   TWEETS_TRAIN_CSV/TWEETS_TEST_CSV env-override путей
 ├── metrics.py                # accuracy/precision/recall/f1 (macro/weighted/per-class),
 │                             #   ROC-AUC OVR/OVO, log-loss, Cohen's kappa, MCC, top-2 acc
 ├── engine.py                  # train_epoch / evaluate (+ per-sample loss)
+├── trainer.py                 # run_training (keep best-epoch weights) / final_run /
+│                             #   evaluate_test_and_log / log_run_params
 ├── error_analysis.py          # топ hardest/easiest примеров по loss, лог в Comet
-├── comet_utils.py             # инициализация comet_ml.Experiment из config.yaml
+├── comet_utils.py             # инициализация comet_ml.Experiment из config.yaml;
+│                             #   COMET_ML_DISABLED=1 = офлайн-режим без кометы
 └── utils.py                   # seed_everything, freeze_backbone
 
 exp1_frozen_head/            # БЕЙЗЛАЙН, вариант A: backbone заморожен,
@@ -72,6 +76,69 @@ exp4_alt_architectures/      # 4 модификации BERT (RoBERTa/ALBERT/Dis
    "Extremely *" категорий, поэтому именно macro-F1, а не accuracy, решает,
    какой вариант брать за бейзлайн). exp4 сравнивается с этим бейзлайном по
    тем же метрикам, залогированным в тот же Comet project.
+
+## Что починено / изменено перед финалом
+
+- **Best-epoch weights.** Раньше `final_run` считал test-метрики на модели
+  *последней* эпохи; при 4–15 эпохах она успевает переобучиться, и финальные
+  числа занижены. Теперь `common/trainer.py:run_training` на каждой record-эпохе
+  по `val_f1_macro` снимает CPU-копию `state_dict`, и перед test-оценкой
+  модель восстанавливается именно с лучших весов (`final_run`). На графиках в
+  Comet сравнивается та же лучшая эпоха.
+- **exp1 (frozen head) — протокол поиска, а не баг кода.** Сетка 2 эпохи ×
+  lr≤1e-3 не давала линейной голове (3845 обучаемых параметров, старт со
+  случайных весов) сойтись: F1 монотонно рос с lr по всей сетке и упирался в
+  0.29. Новый протокол: 4 эпохи на трейл, сетка `lr=[1e-2,5e-3,1e-3,5e-4]`
+  × `bs=[16,32]`.
+- **exp3 (LoRA) — несовместимость окружения Kaggle.** Свежий `peft` требует
+  `torchao>=0.16`, на Kaggle стоит 0.10 → `ImportError` прямо в `get_peft_model`,
+  код до LoRA не доходил. Фикс прямо в Kaggle-ноутбуке одной клеткой:
+  `!pip uninstall -y torchao` (или `!pip install -q 'torchao>=0.16'`). В
+  `exp3_lora/train.py` добавлено понятное сообщение об этой ошибке. Также
+  `modules_to_save` оставлен только `["classifier"]` (у
+  `BertForSequenceClassification` нет top-level `pooler`).
+- **Comet-сравнимость.** В каждый трейл/финал теперь пишутся параметры
+  `learning_rate`, `batch_size`, `epochs`, `model_name`, `freeze_backbone`,
+  `n_trainable_params`, `n_total_params` (колонки в таблице сравнения Comet),
+  метрика `lr` по планировщику на каждой эпохе, `best_val_f1_macro`, все
+  `test_*`; полные тестовые метрики дублируются в
+  `outputs/<run>/test_metrics.json` для офлайн-сводной таблицы.
+- **Локальный smoke-тест без Comet:** `export COMET_ML_DISABLED=1` — все
+  скрипты работают офлайн с заглушкой-логгером.
+- **Пути к данным** переопределяются env-переменными
+  `TWEETS_TRAIN_CSV`/`TWEETS_TEST_CSV`, не трогая yaml (на Kaggle оставить
+  как есть).
+- `roberta.yaml` — восстановлен отсутствовавший ключ `batch_sizes` в `search:`.
+- `common/comet_utils.py` — предупреждение про порядок импорта comet_ml
+  обработано (импорт выше torch в каждом `train.py`).
+
+## Финальный runbook на Kaggle
+
+```bash
+# (разово в клетке) снять битый torchao для LoRA
+!pip uninstall -y torchao
+!pip install -q -r requirements.txt
+
+# --- сессия 1: бейзлайн ---
+!python exp1_frozen_head/train.py   --config exp1_frozen_head/config.yaml   --mode search
+# вписать победителя в exp1_frozen_head/config.yaml → final:
+!python exp1_frozen_head/train.py   --config exp1_frozen_head/config.yaml   --mode final
+# (exp2 search уже был: 5e-5/16 — сразу финал)
+!python exp2_full_finetune/train.py --config exp2_full_finetune/config.yaml --mode final
+
+# --- сессия 2: LoRA + модификации ---
+!python exp3_lora/train.py          --config exp3_lora/config.yaml          --mode search
+!python exp3_lora/train.py          --config exp3_lora/config.yaml          --mode final
+!python exp4_alt_architectures/train.py --config exp4_alt_architectures/configs/roberta.yaml    --mode final
+!python exp4_alt_architectures/train.py --config exp4_alt_architectures/configs/albert.yaml     --mode final
+!python exp4_alt_architectures/train.py --config exp4_alt_architectures/configs/distilbert.yaml --mode final
+!python exp4_alt_architectures/train.py --config exp4_alt_architectures/configs/electra.yaml    --mode final
+```
+
+Итог: в Comet-проекте `bert-text-classification` фильтруем по тегу `final` и
+сравниваем 6 моделей по `test_f1_macro` (+ `test_roc_auc_ovr_macro`,
+`test_log_loss`, `test_matthews_corrcoef` как тай-брейкеры). Локально сводная
+таблица собирается из `outputs/*/test_metrics.json`.
 
 ## Про API-ключ Comet
 

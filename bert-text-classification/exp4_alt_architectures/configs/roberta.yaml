@@ -31,8 +31,7 @@ train:
 search:
   search_epochs: 2
   learning_rates: [5.0e-5, 3.0e-5, 2.0e-5, 1.0e-5]
-
-
+  batch_sizes: [16, 32]
 final:
   learning_rate: 5.0e-5
   batch_size: 16

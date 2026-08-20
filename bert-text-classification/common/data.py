@@ -10,6 +10,7 @@ Columns: UserName, ScreenName, Location, TweetAt, OriginalTweet, Sentiment
 Sentiment has 5 classes:
     Extremely Negative, Negative, Neutral, Positive, Extremely Positive
 """
+import os
 import re
 import pandas as pd
 import torch
@@ -43,9 +44,17 @@ def _read_csv(path: str) -> pd.DataFrame:
     return pd.read_csv(path, encoding="latin-1")
 
 
+def _resolve_csv(path: str) -> str:
+    """ENV override so the same yaml works on Kaggle and locally:
+    export TWEETS_TRAIN_CSV=... TWEETS_TEST_CSV=... (resolved once at load)."""
+    env_name = "TWEETS_TRAIN_CSV" if "train" in os.path.basename(path).lower() else "TWEETS_TEST_CSV"
+    override = os.environ.get(env_name)
+    return override if override else path
+
+
 def load_dataframes(train_csv: str, test_csv: str, val_size: float = 0.1, seed: int = 42):
-    train_df = _read_csv(train_csv)
-    test_df = _read_csv(test_csv)
+    train_df = _read_csv(_resolve_csv(train_csv))
+    test_df = _read_csv(_resolve_csv(test_csv))
 
     for df in (train_df, test_df):
         df["text"] = df["OriginalTweet"].apply(clean_tweet)
