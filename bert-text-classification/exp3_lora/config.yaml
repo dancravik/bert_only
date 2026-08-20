@@ -40,7 +40,7 @@ search:
   batch_sizes: [64]              # fixed at max that fits T4 16GB
 
 final:
-  learning_rate: 1.0e-4
+  learning_rate: 5.0e-4          # search winner (best_val_f1_macro=0.780 @ epoch 2, still climbing)
   batch_size: 64
   epochs: 6
 
