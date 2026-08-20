@@ -34,11 +34,11 @@ train:
 search:
   search_epochs: 2
   learning_rates: [5.0e-5, 3.0e-5, 2.0e-5, 1.0e-5]
-  batch_sizes: [16, 32, 64]   # cheaper model -> can afford larger batches
+  batch_sizes: [64]              # fixed at max that fits T4 16GB
 
 final:
   learning_rate: 5.0e-5
-  batch_size: 16
+  batch_size: 64
   epochs: 4
 
 error_analysis:

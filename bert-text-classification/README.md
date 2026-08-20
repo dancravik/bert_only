@@ -17,8 +17,8 @@ analysis) вынесен в `common/`, чтобы не дублировать е
 common/                      # общие утилиты, импортируются во всех exp*
 ├── data.py                  # чтение csv, TweetDataset, collate с динамическим паддингом;
 │                             #   TWEETS_TRAIN_CSV/TWEETS_TEST_CSV env-override путей
-├── metrics.py                # accuracy/precision/recall/f1 (macro/weighted/per-class),
-│                             #   ROC-AUC OVR/OVO, log-loss, Cohen's kappa, MCC, top-2 acc
+├── metrics.py                # accuracy; P/R/F1 (macro/micro/weighted);
+│                             #   ROC-AUC macro (OVR), PR-AUC macro
 ├── engine.py                  # train_epoch / evaluate (+ per-sample loss)
 ├── trainer.py                 # run_training (keep best-epoch weights) / final_run /
 │                             #   evaluate_test_and_log / log_run_params
@@ -123,7 +123,7 @@ exp4_alt_architectures/      # 4 модификации BERT (RoBERTa/ALBERT/Dis
 !python exp1_frozen_head/train.py   --config exp1_frozen_head/config.yaml   --mode search
 # вписать победителя в exp1_frozen_head/config.yaml → final:
 !python exp1_frozen_head/train.py   --config exp1_frozen_head/config.yaml   --mode final
-# (exp2 search уже был: 5e-5/16 — сразу финал)
+# (exp2 search уже был: 5e-5 — сразу финал; bs теперь везде 64)
 !python exp2_full_finetune/train.py --config exp2_full_finetune/config.yaml --mode final
 
 # --- сессия 2: LoRA + модификации ---
@@ -136,9 +136,9 @@ exp4_alt_architectures/      # 4 модификации BERT (RoBERTa/ALBERT/Dis
 ```
 
 Итог: в Comet-проекте `bert-text-classification` фильтруем по тегу `final` и
-сравниваем 6 моделей по `test_f1_macro` (+ `test_roc_auc_ovr_macro`,
-`test_log_loss`, `test_matthews_corrcoef` как тай-брейкеры). Локально сводная
-таблица собирается из `outputs/*/test_metrics.json`.
+сравниваем 6 моделей по `test_f1_macro` (+ `test_roc_auc_macro`,
+`test_pr_auc_macro` как тай-брейкеры). Локально сводная таблица собирается из
+`outputs/*/test_metrics.json`.
 
 ## Про API-ключ Comet
 
@@ -152,11 +152,14 @@ exp4_alt_architectures/      # 4 модификации BERT (RoBERTa/ALBERT/Dis
 
 ## Метрики (используются везде одинаково)
 
-`common/metrics.py` считает по каждому прогону: accuracy, balanced accuracy,
-precision/recall/F1 (macro, weighted, micro, и отдельно по каждому из 5
-классов), ROC-AUC (OVR и OVO, macro), log-loss, top-2 accuracy, Cohen's
-kappa, Matthews correlation coefficient. Плюс confusion matrix и
-classification_report логируются в Comet как confusion matrix widget и text asset.
+`common/metrics.py` считает по каждому прогону: accuracy; precision / recall /
+F1 в усреднениях macro, micro и weighted; ROC-AUC (macro, OVR); PR-AUC /
+average precision (macro). Per-class P/R/F1 остаются текстом в
+classification_report (логируется в Comet). Confusion matrix — отдельным
+виджетом. `train_loss` / `val_loss` / `lr` пишутся по каждой эпохе, так что в
+Comet можно вживую сравнивать кривые обучения разных экспериментов.
+Батч-сайз зафиксирован на 64 (максимум, влезает в T4 16GB для seq_len=128),
+перебирается только lr.
 
 ## Error analysis
 

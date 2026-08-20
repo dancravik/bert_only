@@ -31,13 +31,13 @@ train:
 search:
   search_epochs: 4
   learning_rates: [1.0e-2, 5.0e-3, 1.0e-3, 5.0e-4]
-  batch_sizes: [16, 32]
+  batch_sizes: [64]              # fixed: T4 16GB comfortably fits bert-base seq128 @ bs64
 
 # --- step 2: fill in the winner from the search, then run
 # `python train.py --config config.yaml --mode final` for the full run ---
 final:
   learning_rate: 1.0e-3          # provisional placeholder — fill the search winner
-  batch_size: 32
+  batch_size: 64
   epochs: 15
 
 error_analysis:
